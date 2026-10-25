@@ -6,7 +6,6 @@ import { randomUUID } from 'node:crypto';
 import type { Redis } from 'ioredis';
 import { initializeApp, cert, type App } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { Resend } from 'resend';
 import { REDIS_CLIENT } from '../redis/redis.module.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
@@ -68,17 +67,24 @@ export class AuthService {
       return { requestId, resendAfter, devOtp: otp };
     }
 
-    const apiKey = this.config.get<string>('RESEND_API_KEY');
-    if (!apiKey) throw new BadRequestException('Email sending is not configured. Set MOCK_EMAIL_OTP=true for dev.');
+    const apiKey = this.config.get<string>('BREVO_API_KEY');
+    const senderEmail = this.config.get<string>('BREVO_SENDER_EMAIL');
+    if (!apiKey || !senderEmail) throw new BadRequestException('Email sending is not configured. Set MOCK_EMAIL_OTP=true for dev.');
 
-    const from = this.config.get<string>('RESEND_FROM_EMAIL') || 'Tokri <onboarding@resend.dev>';
-    const { error } = await new Resend(apiKey).emails.send({
-      from,
-      to: email,
-      subject: `Your Tokri code is garam-garam: ${otp}`,
-      html: `<p>Your Tokri sign-in code is <b style="font-size:20px">${otp}</b> — fresher than your subzi. Use it in the next 5 minutes before it goes soggy.</p>`,
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: { 'api-key': apiKey, 'Content-Type': 'application/json', accept: 'application/json' },
+      body: JSON.stringify({
+        sender: { name: 'Tokri', email: senderEmail },
+        to: [{ email }],
+        subject: `Your Tokri code is garam-garam: ${otp}`,
+        htmlContent: `<p>Your Tokri sign-in code is <b style="font-size:20px">${otp}</b> — fresher than your subzi. Use it in the next 5 minutes before it goes soggy.</p>`,
+      }),
     });
-    if (error) throw new BadRequestException(error.message || 'Could not send the email. Try again.');
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new BadRequestException(body.message || 'Could not send the email. Try again.');
+    }
 
     return { requestId, resendAfter };
   }
