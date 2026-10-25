@@ -36,6 +36,7 @@ export interface CartStateDto {
   storeId: string;
   addressId: string | null;
   status: 'open' | 'locked' | 'ordered' | 'expired';
+  orderId: string | null;
   budgetCap: number | null;
   splitMode: 'host_pays_all' | 'pay_for_own' | 'split_equally' | 'custom';
   inviteCode: string | null;

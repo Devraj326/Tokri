@@ -273,6 +273,7 @@ export class CartService {
       include: {
         members: { include: { user: true } },
         items: { include: { variant: { include: { product: { include: { category: true } } } }, reactions: true } },
+        orders: { orderBy: { createdAt: 'desc' }, take: 1 },
       },
     });
     if (!cart) throw new NotFoundException('Cart not found');
@@ -285,6 +286,7 @@ export class CartService {
       storeId: cart.storeId,
       addressId: cart.addressId,
       status: cart.status,
+      orderId: cart.orders[0]?.id ?? null,
       budgetCap: cart.budgetCap,
       splitMode: cart.splitMode,
       inviteCode: cart.inviteCode,

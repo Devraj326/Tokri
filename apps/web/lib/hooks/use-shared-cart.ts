@@ -6,6 +6,7 @@ import { getSocket } from '../socket';
 
 export function useSharedCart(cartId: string) {
   const [cart, setCart] = useState<CartStateDto | null>(null);
+  const [orderId, setOrderId] = useState<string | null>(null);
   const versionRef = useRef(-1);
 
   useEffect(() => {
@@ -13,6 +14,7 @@ export function useSharedCart(cartId: string) {
     getCart(cartId).then((data) => {
       if (!cancelled) {
         setCart(data);
+        setOrderId(data.orderId);
         versionRef.current = data.version;
       }
     });
@@ -23,6 +25,7 @@ export function useSharedCart(cartId: string) {
     function resync() {
       getCart(cartId).then((data) => {
         setCart(data);
+        setOrderId(data.orderId);
         versionRef.current = data.version;
       });
     }
@@ -77,6 +80,12 @@ export function useSharedCart(cartId: string) {
       setCart((prev) => (prev ? { ...prev, splitMode: payload.splitMode, version: payload.version } : prev));
     }
 
+    function onOrdered(payload: { cartId: string; orderId: string; version: number }) {
+      if (payload.cartId !== cartId) return;
+      setOrderId(payload.orderId);
+      setCart((prev) => (prev ? { ...prev, status: 'ordered', version: payload.version } : prev));
+    }
+
     socket.on('cart:state', onState);
     socket.on('item:added', onItemAdded);
     socket.on('item:updated', onItemUpdated);
@@ -85,6 +94,7 @@ export function useSharedCart(cartId: string) {
     socket.on('member:left', onMemberLeft);
     socket.on('cart:locked', onLocked);
     socket.on('split:updated', onSplitUpdated);
+    socket.on('cart:ordered', onOrdered);
 
     return () => {
       cancelled = true;
@@ -96,8 +106,9 @@ export function useSharedCart(cartId: string) {
       socket.off('member:left', onMemberLeft);
       socket.off('cart:locked', onLocked);
       socket.off('split:updated', onSplitUpdated);
+      socket.off('cart:ordered', onOrdered);
     };
   }, [cartId]);
 
-  return { cart, refresh: () => getCart(cartId).then(setCart) };
+  return { cart, orderId, refresh: () => getCart(cartId).then(setCart) };
 }

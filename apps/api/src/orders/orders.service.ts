@@ -78,11 +78,15 @@ export class OrdersService {
         ),
     );
 
-    await this.prisma.cart.update({ where: { id: cartId }, data: { status: 'ordered' } });
+    const updatedCart = await this.prisma.cart.update({
+      where: { id: cartId },
+      data: { status: 'ordered', version: { increment: 1 } },
+    });
 
     for (const p of payments) {
       this.gateway.broadcastPaymentStatus(cartId, p.payerId, p.status);
     }
+    this.gateway.broadcastOrdered(cartId, order.id, updatedCart.version);
 
     if (mockPayments) {
       await this.maybeStartProgression(order.id, cartId);

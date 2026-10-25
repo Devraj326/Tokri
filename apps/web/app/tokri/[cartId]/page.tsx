@@ -84,7 +84,7 @@ export default function SharedTokriPage() {
   const { cartId } = useParams<{ cartId: string }>();
   const router = useRouter();
   const user = useAuthStore((s) => s.user);
-  const { cart } = useSharedCart(cartId);
+  const { cart, orderId } = useSharedCart(cartId);
   const { addItem } = useActiveCart();
   const setActiveCart = useSessionStore((s) => s.setActiveCart);
   const [showInvite, setShowInvite] = useState(false);
@@ -431,10 +431,18 @@ export default function SharedTokriPage() {
 
       <div className="buybar tkbar">
         <div>
-          <span className="small muted">{cart.status === 'locked' ? 'Locked total' : 'Total so far'}</span>
+          <span className="small muted">{cart.status === 'ordered' ? 'Paid' : cart.status === 'locked' ? 'Locked total' : 'Total so far'}</span>
           <div className="price" style={{ fontSize: 19 }}>₹{bill?.total ?? 0}</div>
         </div>
-        {cart.status === 'open' ? (
+        {cart.status === 'ordered' ? (
+          <button
+            className="btn primary"
+            disabled={!orderId}
+            onClick={() => orderId && router.push(`/orders/${orderId}`)}
+          >
+            Order placed <Icon name="arrow" className="h-[18px] w-[18px]" />
+          </button>
+        ) : cart.status === 'open' ? (
           isHost && (
             <button
               className={`holdlock ${holding ? 'holding' : ''}`}

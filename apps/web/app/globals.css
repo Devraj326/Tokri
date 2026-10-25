@@ -479,6 +479,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing:
 .rail button small { font-family: var(--font-mono-tabular); font-size: 10.5px; color: var(--muted); }
 .rail-ind { position: absolute; left: 0; top: 0; width: 100%; background: var(--card); border-left: 4px solid var(--haldi); transition: transform .4s cubic-bezier(.3,1.35,.5,1), height .3s; z-index: 0; pointer-events: none; }
 .catmain { min-width: 0; }
+.catlayout > .catmain:only-child { grid-column: 1 / -1; }
 .filters { position: sticky; top: 122px; z-index: 4; background: var(--paper); display: flex; gap: 6px; overflow-x: auto; padding: 10px 12px 8px; scrollbar-width: none; }
 .filters .chip { display: flex; align-items: center; gap: 4px; flex: none; }
 .filters .chip svg { width: 14px; height: 14px; }

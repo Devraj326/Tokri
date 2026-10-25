@@ -126,4 +126,8 @@ export class CartGateway implements OnGatewayConnection {
   broadcastOrderStatus(orderId: string, cartId: string, status: string, eta: string | null) {
     this.server.to(room(cartId)).emit('order:status', { orderId, status, eta });
   }
+
+  broadcastOrdered(cartId: string, orderId: string, version: number) {
+    this.server.to(room(cartId)).emit('cart:ordered', { cartId, orderId, version });
+  }
 }
