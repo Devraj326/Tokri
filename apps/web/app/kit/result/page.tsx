@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { streamKit, addKitToCart, sendKitFeedback, type KitItemDto, type KitDoneDto } from '../../../lib/api/kit';
 import { addPantryItem } from '../../../lib/api/users';
@@ -26,6 +26,14 @@ const BUCKETS: { key: KitItemDto['bucket']; label: string; color: string }[] = [
 const LOADER_STEPS = ['Reading your plan', 'Writing the list', 'Checking stock at your store', 'Finding swaps'];
 
 export default function KitResultPage() {
+  return (
+    <Suspense fallback={null}>
+      <KitResultPageInner />
+    </Suspense>
+  );
+}
+
+function KitResultPageInner() {
   const params = useSearchParams();
   const router = useRouter();
   const prompt = params.get('prompt') ?? '';

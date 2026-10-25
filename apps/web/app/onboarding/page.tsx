@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { AppBar } from '../../components/layout/app-bar';
 import { Icon } from '../../components/ui/icons';
@@ -15,6 +15,14 @@ const FALLBACK_LAT = 12.9716;
 const FALLBACK_LNG = 77.6412;
 
 export default function OnboardingPage() {
+  return (
+    <Suspense fallback={null}>
+      <OnboardingPageInner />
+    </Suspense>
+  );
+}
+
+function OnboardingPageInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const next = safeNextPath(searchParams.get('next'));

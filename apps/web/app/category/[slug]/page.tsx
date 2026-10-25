@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { listCategories, listProducts, type ProductDto } from '../../../lib/api/catalog';
 import { useSessionStore } from '../../../lib/store/session';
 import { ProductTile } from '../../../components/product/product-tile';
@@ -28,6 +28,14 @@ function discount(p: ProductDto): number {
 }
 
 export default function CategoryPage() {
+  return (
+    <Suspense fallback={null}>
+      <CategoryPageInner />
+    </Suspense>
+  );
+}
+
+function CategoryPageInner() {
   const { slug } = useParams<{ slug: string }>();
   const storeId = useSessionStore((s) => s.storeId);
   const router = useRouter();

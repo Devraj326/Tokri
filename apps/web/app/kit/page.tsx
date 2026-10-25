@@ -1,7 +1,7 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
 import { AppBar } from '../../components/layout/app-bar';
 import { Icon } from '../../components/ui/icons';
 import { ProductArt, type ArtKey } from '../../components/ui/product-art';
@@ -20,6 +20,14 @@ const MADE: { title: string; art: ArtKey; items: number; from: number; count: nu
 ];
 
 export default function KitPromptPage() {
+  return (
+    <Suspense fallback={null}>
+      <KitPromptPageInner />
+    </Suspense>
+  );
+}
+
+function KitPromptPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const { history } = useKitHistory();
