@@ -4,6 +4,7 @@ export interface CartItemDto {
   id: string;
   cartId: string;
   variantId: string;
+  productId: string;
   name: string;
   image: string | null;
   price: number;
@@ -37,6 +38,7 @@ export interface CartStateDto {
   addressId: string | null;
   status: 'open' | 'locked' | 'ordered' | 'expired';
   orderId: string | null;
+  couponCode: string | null;
   budgetCap: number | null;
   splitMode: 'host_pays_all' | 'pay_for_own' | 'split_equally' | 'custom';
   inviteCode: string | null;
@@ -48,6 +50,8 @@ export interface CartStateDto {
 export interface BillDto {
   subtotal: number;
   deliveryFee: number;
+  discount: number;
+  couponCode: string | null;
   total: number;
   freeDeliveryThreshold: number;
   amountToFreeDelivery: number;
@@ -112,4 +116,12 @@ export function transferHost(cartId: string, newHostId: string) {
 
 export function removeMember(cartId: string, userId: string) {
   return apiFetch(`/carts/${cartId}/members/${userId}`, { method: 'DELETE' });
+}
+
+export function applyCoupon(cartId: string, code: string) {
+  return apiFetch<{ version: number }>(`/carts/${cartId}/coupon`, { method: 'POST', body: JSON.stringify({ code }) });
+}
+
+export function removeCoupon(cartId: string) {
+  return apiFetch<{ version: number }>(`/carts/${cartId}/coupon`, { method: 'DELETE' });
 }

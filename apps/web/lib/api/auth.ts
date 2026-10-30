@@ -51,3 +51,7 @@ export function updateProfile(data: { name?: string; phone?: string }) {
     body: JSON.stringify(data),
   });
 }
+
+export function logout() {
+  return apiFetch<void>('/auth/logout', { method: 'POST' });
+}

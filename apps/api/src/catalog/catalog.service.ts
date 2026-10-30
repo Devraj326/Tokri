@@ -48,23 +48,54 @@ export class CatalogService {
     });
   }
 
-  async products(params: { categorySlug?: string; storeId: string }) {
-    const where = params.categorySlug ? { category: { slug: params.categorySlug } } : {};
-    const products = await this.prisma.product.findMany({
-      where,
-      include: {
-        variants: {
-          include: { inventory: { where: { storeId: params.storeId } } },
+  async products(params: {
+    categorySlug?: string;
+    storeId: string;
+    subcategory?: string;
+    limit?: number;
+    offset?: number;
+  }) {
+    const where = {
+      ...(params.categorySlug ? { category: { slug: params.categorySlug } } : {}),
+      ...(params.subcategory ? { subcategory: params.subcategory } : {}),
+    };
+    const take = params.limit ?? (params.categorySlug ? 1000 : 100);
+    const skip = params.offset ?? 0;
+    const [products, total] = await Promise.all([
+      this.prisma.product.findMany({
+        where,
+        include: {
+          variants: {
+            include: { inventory: { where: { storeId: params.storeId } } },
+          },
+          category: true,
         },
-        category: true,
-      },
-      orderBy: { name: 'asc' },
-      // A single category tops out around ~900 products in this catalog; a
-      // category listing needs the full set for subcategory grouping/filters
-      // to be meaningful. Unscoped listing (no category) stays capped.
-      take: params.categorySlug ? 1000 : 100,
+        orderBy: { name: 'asc' },
+        take,
+        skip,
+      }),
+      this.prisma.product.count({ where }),
+    ]);
+    return { items: products.map((p) => this.serializeProduct(p, params.storeId)), total };
+  }
+
+  async productCounts(params: { categorySlug: string }) {
+    const category = await this.prisma.category.findUnique({ where: { slug: params.categorySlug } });
+    if (!category) return { total: 0, subcategories: {} as Record<string, number> };
+
+    const groups = await this.prisma.product.groupBy({
+      by: ['subcategory'],
+      where: { categoryId: category.id },
+      _count: { _all: true },
     });
-    return products.map((p) => this.serializeProduct(p, params.storeId));
+
+    const subcategories: Record<string, number> = {};
+    let total = 0;
+    for (const g of groups) {
+      total += g._count._all;
+      if (g.subcategory) subcategories[g.subcategory] = g._count._all;
+    }
+    return { total, subcategories };
   }
 
   async product(id: string, storeId: string) {

@@ -2,10 +2,11 @@
 
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { clsx } from 'clsx';
 import { getProduct, listProducts, type ProductDto } from '../../../lib/api/catalog';
+import { listProductReviews, submitReview } from '../../../lib/api/reviews';
 import { useSessionStore } from '../../../lib/store/session';
 import { useActiveCart } from '../../../lib/hooks/use-active-cart';
 import { useWishlist } from '../../../lib/hooks/use-wishlist';
@@ -19,11 +20,9 @@ import {
   CATEGORY_DESC,
   CATEGORY_INFO,
   CATEGORY_NUTRI,
-  CATEGORY_REVIEWS,
   CATEGORY_TINT,
   FOOD_CATEGORIES,
   hashN,
-  ratingFor,
   unitPrice,
 } from '../../../lib/category-meta';
 
@@ -46,9 +45,28 @@ export default function ProductDetailPage() {
   const product = productQuery.data;
 
   const categoryProductsQuery = useQuery({
-    queryKey: ['products', storeId, product?.category.slug],
-    queryFn: () => listProducts(storeId!, product!.category.slug),
+    queryKey: ['products', storeId, product?.category.slug, product?.subcategory],
+    queryFn: () =>
+      listProducts(storeId!, product!.category.slug, {
+        subcategory: product!.subcategory ?? undefined,
+        limit: 20,
+      }),
     enabled: !!storeId && !!product,
+  });
+
+  const reviewsQuery = useQuery({
+    queryKey: ['product-reviews', id],
+    queryFn: () => listProductReviews(id),
+    enabled: !!id,
+  });
+  const qc = useQueryClient();
+  const submitReviewMutation = useMutation({
+    mutationFn: (data: { rating: number; text?: string }) => submitReview(id, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['product-reviews', id] });
+      setMyRating(0);
+      setMyReviewText('');
+    },
   });
 
   const [variantIndex, setVariantIndex] = useState(0);
@@ -56,7 +74,8 @@ export default function ProductDetailPage() {
   const [zoomOpen, setZoomOpen] = useState(false);
   const [wishPop, setWishPop] = useState(false);
   const [comboSel, setComboSel] = useState<Record<string, boolean>>({});
-  const [helpful, setHelpful] = useState<Record<string, boolean>>({});
+  const [myRating, setMyRating] = useState(0);
+  const [myReviewText, setMyReviewText] = useState('');
   const [addressSheetOpen, setAddressSheetOpen] = useState(false);
 
   useEffect(() => {
@@ -114,7 +133,12 @@ export default function ProductDetailPage() {
   const slug = product.category.slug;
   const tint = CATEGORY_TINT[slug] ?? product.tileColor;
   const isFood = FOOD_CATEGORIES.has(slug);
-  const { rating, count, dist } = ratingFor(product.id);
+  const reviewsData = reviewsQuery.data;
+  const count = reviewsData?.count ?? 0;
+  const rating = count > 0 ? reviewsData!.average.toFixed(1) : '—';
+  const dist = [5, 4, 3, 2, 1].map((star) =>
+    count > 0 ? Math.round(((reviewsData!.reviews.filter((r) => r.rating === star).length) / reviewsData!.reviews.length) * 100) : 0,
+  );
   const lowStock = variant.qtyAvailable > 0 && variant.qtyAvailable < 15;
   const artKey = artKeyFor(product.name, slug);
   const brand = product.brand ?? 'Tokri';
@@ -128,7 +152,7 @@ export default function ProductDetailPage() {
 
   const liveTokri = cart && cart.type === 'shared' && cart.status === 'open' ? cart : null;
 
-  const siblings = (categoryProductsQuery.data ?? []).filter((p) => p.id !== product.id);
+  const siblings = (categoryProductsQuery.data?.items ?? []).filter((p) => p.id !== product.id);
   const sameSub = siblings.filter((p) => p.subcategory === product.subcategory);
   const comboPool: ProductDto[] = [product, ...sameSub.slice(0, 2)];
   const comboSelected = (pid: string) => comboSel[pid] !== false;
@@ -137,8 +161,8 @@ export default function ProductDetailPage() {
   const comboMrp = chosen.reduce((sum, p) => sum + (p.variants[0]?.mrp ?? 0), 0);
   const similar = sameSub.slice(0, 6).length > 0 ? sameSub.slice(0, 6) : siblings.slice(0, 6);
 
+  const reviews = reviewsData?.reviews ?? [];
   const h = hashN(product.id);
-  const reviews = CATEGORY_REVIEWS[slug] ?? [];
 
   async function addCombo() {
     for (const p of chosen) {
@@ -419,29 +443,58 @@ export default function ProductDetailPage() {
             ))}
           </div>
         </div>
-        {reviews.map(([nm, r, txt, when], i) => {
-          const k = `${product.id}-${i}`;
-          const hc = 8 + ((h >> i) % 30) + (helpful[k] ? 1 : 0);
-          return (
-            <article className="review" key={k}>
+        <div className="review" style={{ marginBottom: 16 }}>
+          <b style={{ display: 'block', marginBottom: 6 }}>Rate this product</b>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                onClick={() => setMyRating(n)}
+                aria-label={`${n} star`}
+                style={{ fontSize: 22, background: 'none', border: 'none', cursor: 'pointer', color: n <= myRating ? 'var(--haldi)' : 'var(--dust)' }}
+              >
+                ★
+              </button>
+            ))}
+          </div>
+          {myRating > 0 && (
+            <>
+              <textarea
+                className="admin-input"
+                placeholder="Say something about it (optional)"
+                value={myReviewText}
+                onChange={(e) => setMyReviewText(e.target.value)}
+                rows={2}
+                style={{ width: '100%', resize: 'vertical' }}
+              />
+              <button
+                className="btn primary"
+                style={{ marginTop: 8 }}
+                disabled={submitReviewMutation.isPending}
+                onClick={() => submitReviewMutation.mutate({ rating: myRating, text: myReviewText || undefined })}
+              >
+                {submitReviewMutation.isPending ? 'Submitting…' : 'Submit review'}
+              </button>
+            </>
+          )}
+        </div>
+        {reviews.length === 0 ? (
+          <p className="muted small">No reviews yet — be the first to rate this.</p>
+        ) : (
+          reviews.map((r, i) => (
+            <article className="review" key={r.id}>
               <header>
                 <span className="av" style={{ width: 28, height: 28, fontSize: 12, borderRadius: '50%', border: '2px solid var(--ink)', display: 'grid', placeItems: 'center', background: ['var(--methi)', 'var(--clay)', 'var(--mirchi)'][i % 3], color: 'var(--on-accent)' }}>
-                  {nm[0]}
+                  {r.userName[0]}
                 </span>
-                <b>{nm}</b>
-                <span className="rs">★ {r}</span>
-                <span className="muted small" style={{ marginLeft: 'auto' }}>{when}</span>
+                <b>{r.userName}</b>
+                <span className="rs">★ {r.rating}</span>
+                <span className="muted small" style={{ marginLeft: 'auto' }}>{new Date(r.createdAt).toLocaleDateString('en-IN')}</span>
               </header>
-              <p>{txt}</p>
-              <div className="meta">
-                <span>Verified purchase</span>
-                <button className="link" aria-pressed={!!helpful[k]} onClick={() => setHelpful((s) => ({ ...s, [k]: !s[k] }))}>
-                  Helpful ({hc})
-                </button>
-              </div>
+              {r.text && <p>{r.text}</p>}
             </article>
-          );
-        })}
+          ))
+        )}
       </section>
 
       {similar.length > 0 && (

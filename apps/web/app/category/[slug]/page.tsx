@@ -2,9 +2,9 @@
 
 import Link from 'next/link';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { Fragment, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { listCategories, listProducts, type ProductDto } from '../../../lib/api/catalog';
+import { listCategories, listProductCounts, listProducts, type ProductDto } from '../../../lib/api/catalog';
 import { useSessionStore } from '../../../lib/store/session';
 import { ProductTile } from '../../../components/product/product-tile';
 import { AppBar } from '../../../components/layout/app-bar';
@@ -55,27 +55,53 @@ function CategoryPageInner() {
   const indRef = useRef<HTMLDivElement>(null);
   const prevIndY = useRef<number | null>(null);
 
+  const PAGE_SIZE = 30;
+  const needsFull = offerOnly || cheapOnly || sortMode !== 'rel';
+
   const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: listCategories });
-  const productsQuery = useQuery({
-    queryKey: ['products', storeId, slug],
-    queryFn: () => listProducts(storeId!, slug),
+  const countsQuery = useQuery({
+    queryKey: ['product-counts', storeId, slug],
+    queryFn: () => listProductCounts(storeId!, slug),
     enabled: !!storeId,
+  });
+
+  const pagedQuery = useInfiniteQuery({
+    queryKey: ['products-paged', storeId, slug, subTab],
+    queryFn: ({ pageParam }) =>
+      listProducts(storeId!, slug, { subcategory: subTab || undefined, limit: PAGE_SIZE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (lastPage, pages) => {
+      const loaded = pages.reduce((n, p) => n + p.items.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
+    },
+    enabled: !!storeId && !needsFull,
+  });
+
+  const fullQuery = useQuery({
+    queryKey: ['products-full', storeId, slug, subTab],
+    queryFn: () => listProducts(storeId!, slug, { subcategory: subTab || undefined, limit: 5000 }),
+    enabled: !!storeId && needsFull,
   });
 
   const category = categoriesQuery.data?.find((c) => c.slug === slug);
   const tint = CATEGORY_TINT[slug] ?? 'dust';
-  const all = productsQuery.data ?? [];
   const cap = cheapCapFor(slug);
 
-  const inSub = (sub: string) => (sub === '' ? all : all.filter((p) => p.subcategory === sub));
-  const subcats = (CATEGORY_SUBCATS[slug] ?? []).filter((sub) => inSub(sub).length > 0);
+  const pagedItems = pagedQuery.data?.pages.flatMap((p) => p.items) ?? [];
+  const pagedTotal = pagedQuery.data?.pages[0]?.total ?? 0;
+  const source = needsFull ? fullQuery.data?.items ?? [] : pagedItems;
+  const isLoading = needsFull ? fullQuery.isLoading : pagedQuery.isLoading;
 
-  let list = inSub(subTab);
+  const totalCount = countsQuery.data?.total ?? 0;
+  const subcats = (CATEGORY_SUBCATS[slug] ?? []).filter((sub) => (countsQuery.data?.subcategories[sub] ?? 0) > 0);
+
+  let list = source;
   if (offerOnly) list = list.filter((p) => { const v = p.variants[0]; return v && v.mrp > v.price; });
   if (cheapOnly) list = list.filter((p) => { const v = p.variants[0]; return v && v.price < cap; });
   if (sortMode === 'low') list = [...list].sort((a, b) => (a.variants[0]?.price ?? 0) - (b.variants[0]?.price ?? 0));
   if (sortMode === 'high') list = [...list].sort((a, b) => (b.variants[0]?.price ?? 0) - (a.variants[0]?.price ?? 0));
   if (sortMode === 'off') list = [...list].sort((a, b) => discount(b) - discount(a));
+  const shownCount = needsFull ? list.length : (subTab ? (countsQuery.data?.subcategories[subTab] ?? pagedTotal) : totalCount);
 
   const xsell = CATEGORY_XSELL[slug];
   const showXsell = xsell && subTab === '' && !offerOnly && !cheapOnly && list.length > 0;
@@ -207,7 +233,7 @@ function CategoryPageInner() {
             {category.hindiName && <span className="deva font-devanagari">{category.hindiName}</span>}
             <h2>{category.name}</h2>
             <p>
-              {all.length} item{all.length === 1 ? '' : 's'}. {CATEGORY_NOTE[slug] ?? 'Fresh stock, fast delivery'}.
+              {totalCount} item{totalCount === 1 ? '' : 's'}. {CATEGORY_NOTE[slug] ?? 'Fresh stock, fast delivery'}.
             </p>
           </div>
           <div className="ch-art">
@@ -231,18 +257,15 @@ function CategoryPageInner() {
             <button aria-current={subTab === ''} onClick={() => toggleSub('')}>
               {category && <ProductArt artKey={artKeyFor(category.name, category.slug)} tint={tint} />}
               <span>All</span>
-              <small>{all.length}</small>
+              <small>{totalCount}</small>
             </button>
-            {subcats.map((sub) => {
-              const first = inSub(sub)[0];
-              return (
-                <button key={sub} aria-current={subTab === sub} onClick={() => toggleSub(sub)}>
-                  <ProductArt artKey={artKeyFor(first.name, first.category.slug)} tint={first.tileColor} />
-                  <span>{sub}</span>
-                  <small>{inSub(sub).length}</small>
-                </button>
-              );
-            })}
+            {subcats.map((sub) => (
+              <button key={sub} aria-current={subTab === sub} onClick={() => toggleSub(sub)}>
+                <ProductArt artKey={artKeyFor(sub, slug)} tint={tint} />
+                <span>{sub}</span>
+                <small>{countsQuery.data?.subcategories[sub] ?? 0}</small>
+              </button>
+            ))}
           </nav>
         )}
         <div className="catmain">
@@ -260,11 +283,13 @@ function CategoryPageInner() {
               <button className="chip" aria-pressed={cheapOnly} onClick={toggleCheap}>Under ₹{cap}</button>
             </div>
             <p className="count">
-              {list.length} item{list.length === 1 ? '' : 's'}
+              {shownCount} item{shownCount === 1 ? '' : 's'}
               {subTab ? ` in ${subTab.toLowerCase()}` : ''}
             </p>
 
-            {list.length ? (
+            {isLoading ? (
+              <p className="small pad" style={{ padding: 16, color: 'var(--muted)' }}>Loading…</p>
+            ) : list.length ? (
               <div className="pgrid" ref={gridRef}>
                 {list.map((p, i) => (
                   <Fragment key={p.id}>
@@ -287,7 +312,21 @@ function CategoryPageInner() {
                   </Fragment>
                 ))}
               </div>
-            ) : (
+            ) : null}
+
+            {!needsFull && pagedQuery.hasNextPage && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '20px 0' }}>
+                <button
+                  className="btn"
+                  disabled={pagedQuery.isFetchingNextPage}
+                  onClick={() => pagedQuery.fetchNextPage()}
+                >
+                  {pagedQuery.isFetchingNextPage ? 'Loading…' : 'Load more'}
+                </button>
+              </div>
+            )}
+
+            {!isLoading && !list.length && (
               <div className="catempty">
                 <h2>Nothing matches</h2>
                 <p className="muted">Try removing a filter.</p>

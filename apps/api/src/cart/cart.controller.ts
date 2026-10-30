@@ -84,6 +84,22 @@ export class CartController {
     return { version };
   }
 
+  @Post(':id/coupon')
+  async applyCoupon(@CurrentUser() userId: string, @Param('id') id: string, @Body('code') code: string) {
+    const { version } = await this.cart.applyCoupon(id, userId, code);
+    const state = await this.cart.getCartState(id);
+    this.gateway.broadcastState(id, state);
+    return { version };
+  }
+
+  @Delete(':id/coupon')
+  async removeCoupon(@CurrentUser() userId: string, @Param('id') id: string) {
+    const { version } = await this.cart.removeCoupon(id, userId);
+    const state = await this.cart.getCartState(id);
+    this.gateway.broadcastState(id, state);
+    return { version };
+  }
+
   @Get(':id/shares')
   shares(@Param('id') id: string) {
     return this.cart.computeShares(id);

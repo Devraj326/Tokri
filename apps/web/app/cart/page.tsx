@@ -1,11 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useActiveCart } from '../../lib/hooks/use-active-cart';
 import { useSessionStore } from '../../lib/store/session';
-import { createSharedCart, addCartItem, type CartItemDto } from '../../lib/api/cart';
+import { createSharedCart, addCartItem, applyCoupon, removeCoupon, type CartItemDto } from '../../lib/api/cart';
 import { listAddresses } from '../../lib/api/addresses';
 import { listProducts } from '../../lib/api/catalog';
 import { AppBar } from '../../components/layout/app-bar';
@@ -84,6 +85,28 @@ export default function CartPage() {
   const [converting, setConverting] = useState(false);
   const [showAddress, setShowAddress] = useState(false);
   const [saved, setSaved] = useState<CartItemDto[]>([]);
+  const [couponInput, setCouponInput] = useState('');
+  const [couponError, setCouponError] = useState('');
+  const qc = useQueryClient();
+
+  const applyCouponMutation = useMutation({
+    mutationFn: (code: string) => applyCoupon(cart!.id, code),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cart'] });
+      qc.invalidateQueries({ queryKey: ['cart-bill'] });
+      setCouponInput('');
+      setCouponError('');
+    },
+    onError: (err: any) => setCouponError(err?.message ?? 'Could not apply this coupon'),
+  });
+
+  const removeCouponMutation = useMutation({
+    mutationFn: () => removeCoupon(cart!.id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cart'] });
+      qc.invalidateQueries({ queryKey: ['cart-bill'] });
+    },
+  });
 
   useEffect(() => {
     if (cart?.type === 'shared') router.replace(`/tokri/${cart.id}`);
@@ -101,14 +124,14 @@ export default function CartPage() {
 
   const crossSellQuery = useQuery({
     queryKey: ['cross-sell', cart?.storeId, crossSellCategory],
-    queryFn: () => listProducts(cart!.storeId, crossSellCategory!),
+    queryFn: () => listProducts(cart!.storeId, crossSellCategory!, { limit: 30 }),
     enabled: !!cart?.storeId && !!crossSellCategory,
   });
 
   const missed = useMemo(() => {
     if (!cart) return [];
     const inCart = new Set(cart.items.map((i) => i.variantId));
-    return (crossSellQuery.data ?? [])
+    return (crossSellQuery.data?.items ?? [])
       .flatMap((p) => p.variants.map((v) => ({ product: p, variant: v })))
       .filter(({ variant }) => !inCart.has(variant.id) && variant.qtyAvailable > 0)
       .slice(0, 6);
@@ -294,6 +317,48 @@ export default function CartPage() {
         <Icon name="arrow" className="h-5 w-5" />
       </button>
 
+      {cart && (
+        <section className="card bill2">
+          <h3>Coupon</h3>
+          {cart.couponCode ? (
+            <div className="l">
+              <span>
+                <b>{cart.couponCode}</b> applied
+              </span>
+              <button className="link small" disabled={removeCouponMutation.isPending} onClick={() => removeCouponMutation.mutate()}>
+                Remove
+              </button>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  className="input"
+                  placeholder="Enter coupon code"
+                  value={couponInput}
+                  onChange={(e) => {
+                    setCouponInput(e.target.value.toUpperCase());
+                    setCouponError('');
+                  }}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  className="btn"
+                  disabled={!couponInput || applyCouponMutation.isPending}
+                  onClick={() => applyCouponMutation.mutate(couponInput)}
+                >
+                  Apply
+                </button>
+              </div>
+              {couponError && <p className="small" style={{ color: 'var(--mirchi)', marginTop: 6 }}>{couponError}</p>}
+              <Link href="/coupons" className="small" style={{ color: 'var(--mirchi)', display: 'block', marginTop: 8 }}>
+                View all offers
+              </Link>
+            </>
+          )}
+        </section>
+      )}
+
       {bill && (
         <section className="card bill2">
           <h3>Bill details</h3>
@@ -305,6 +370,12 @@ export default function CartPage() {
             <span>Delivery fee</span>
             <span>{bill.deliveryFee === 0 ? <><s>₹{DELIVERY_FEE}</s> <b className="saved">Free</b></> : `₹${bill.deliveryFee}`}</span>
           </div>
+          {bill.discount > 0 && (
+            <div className="l">
+              <span>Coupon discount{bill.couponCode ? ` (${bill.couponCode})` : ''}</span>
+              <span className="saved">−₹{bill.discount}</span>
+            </div>
+          )}
           <div className="l tot">
             <span>To pay</span>
             <span>₹{bill.total}</span>

@@ -7,12 +7,14 @@ import { useQuery } from '@tanstack/react-query';
 import { listCategories, listProducts, nearestStore, type ProductDto } from '../../lib/api/catalog';
 import { listMyOrders, reorder } from '../../lib/api/orders';
 import { listAddresses } from '../../lib/api/addresses';
+import { listActiveCoupons } from '../../lib/api/coupons';
 import { useSessionStore } from '../../lib/store/session';
 import { useAuthStore } from '../../lib/store/auth';
 import { artKeyFor, ProductArt, type ArtKey } from '../ui/product-art';
 import { Icon } from '../ui/icons';
 import { QuantityStepper } from '../ui/quantity-stepper';
 import { AddressSheet } from '../ui/address-sheet';
+import { ProfileSidebar } from '../ui/profile-sidebar';
 import { useActiveCart } from '../../lib/hooks/use-active-cart';
 import { CATEGORY_TINT } from '../../lib/category-meta';
 
@@ -63,6 +65,7 @@ export function HomeScreen() {
   const [locating, setLocating] = useState(false);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [addressSheetOpen, setAddressSheetOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const [minibarOn, setMinibarOn] = useState(false);
   const [startingTokri, setStartingTokri] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -81,11 +84,12 @@ export function HomeScreen() {
   const etaShown = useRef(false);
 
   const categoriesQuery = useQuery({ queryKey: ['categories'], queryFn: listCategories });
+  const couponsQuery = useQuery({ queryKey: ['active-coupons'], queryFn: listActiveCoupons });
   const ordersQuery = useQuery({ queryKey: ['my-orders'], queryFn: listMyOrders });
   const addressesQuery = useQuery({ queryKey: ['addresses'], queryFn: listAddresses });
   const mandiQuery = useQuery({
     queryKey: ['mandi-rates', storeId],
-    queryFn: () => listProducts(storeId!, 'vegetables-fruits'),
+    queryFn: () => listProducts(storeId!, 'vegetables-fruits', { limit: 8 }),
     enabled: !!storeId,
   });
 
@@ -221,9 +225,9 @@ export function HomeScreen() {
     setTimeout(() => router.push('/tokri/new'), 500);
   }
 
-  async function copyCoupon() {
+  async function copyCoupon(code: string) {
     try {
-      await navigator.clipboard?.writeText('FLAT50');
+      await navigator.clipboard?.writeText(code);
     } catch {
       // clipboard unavailable, still show the copied state
     }
@@ -240,7 +244,7 @@ export function HomeScreen() {
   const lastMember = lastItem ? liveTokri?.members.find((m) => m.userId === lastItem.addedBy) : undefined;
   const tokriBudget = liveTokri?.budgetCap ?? null;
   const tokriSubtotal = bill?.subtotal ?? 0;
-  const mandiRows = (mandiQuery.data ?? []).slice(0, 5);
+  const mandiRows = (mandiQuery.data?.items ?? []).slice(0, 5);
   const categoriesBySlug = new Map((categoriesQuery.data ?? []).map((c) => [c.slug, c]));
   const orderedSlugs = BENTO_ORDER.filter((slug) => slug === '__kit__' || categoriesBySlug.has(slug));
   const leftoverCategories = (categoriesQuery.data ?? []).filter((c) => !BENTO_ORDER.includes(c.slug));
@@ -273,9 +277,14 @@ export function HomeScreen() {
               <span className="dl-addr">{matchedAddress?.line1 ?? storeName ?? locationError ?? 'Tap to find your store'}</span>
             </span>
           </button>
-          <div className="avatar" style={{ width: 42, height: 42, borderRadius: '50%', border: '2px solid var(--ink)', background: 'var(--haldi)', color: 'var(--on-accent)', fontWeight: 600, display: 'grid', placeItems: 'center' }}>
+          <button
+            className="avatar"
+            aria-label="Your profile"
+            onClick={() => setProfileOpen(true)}
+            style={{ width: 42, height: 42, borderRadius: '50%', border: '2px solid var(--ink)', background: 'var(--haldi)', color: 'var(--on-accent)', fontWeight: 600, display: 'grid', placeItems: 'center' }}
+          >
             {(user?.name || 'A')[0].toUpperCase()}
-          </div>
+          </button>
         </div>
 
         <Link href="/search" className="searchbar" style={{ display: 'flex', alignItems: 'center', gap: 10, border: '2px solid var(--ink)', borderRadius: 14, padding: '12px 14px', background: 'var(--card)', color: 'var(--muted)' }}>
@@ -391,14 +400,33 @@ export function HomeScreen() {
         </section>
       )}
 
-      <button className="ticket" onClick={copyCoupon}>
-        <span className="stub"><b>₹50</b><span>OFF</span></span>
-        <span className="tbody">
-          <b>Flat ₹50 off above ₹499</b>
-          <span className="small muted">Great for a shared Tokri. Tap to copy.</span>
-          <code className={copied ? 'copied' : ''}>{copied ? 'Copied' : 'FLAT50'}</code>
-        </span>
-      </button>
+      {!!couponsQuery.data?.length && (
+        <>
+          <button className="ticket" onClick={() => copyCoupon(couponsQuery.data![0].code)}>
+            <span className="stub">
+              <b>{couponsQuery.data[0].discountType === 'flat' ? `₹${couponsQuery.data[0].value}` : `${couponsQuery.data[0].value}%`}</b>
+              <span>OFF</span>
+            </span>
+            <span className="tbody">
+              <b>
+                {couponsQuery.data[0].description ??
+                  (couponsQuery.data[0].discountType === 'flat'
+                    ? `Flat ₹${couponsQuery.data[0].value} off`
+                    : `${couponsQuery.data[0].value}% off`)}
+              </b>
+              <span className="small muted">
+                {couponsQuery.data[0].minOrderValue ? `On orders above ₹${couponsQuery.data[0].minOrderValue}. ` : ''}Tap to copy.
+              </span>
+              <code className={copied ? 'copied' : ''}>{copied ? 'Copied' : couponsQuery.data[0].code}</code>
+            </span>
+          </button>
+          {couponsQuery.data.length > 1 && (
+            <Link href="/coupons" className="small" style={{ display: 'block', textAlign: 'center', margin: '8px 16px 0', color: 'var(--mirchi)' }}>
+              View all {couponsQuery.data.length} offers
+            </Link>
+          )}
+        </>
+      )}
 
       {!!ordersForBuyAgain.length && (
         <>
@@ -428,6 +456,7 @@ export function HomeScreen() {
       </footer>
 
       {addressSheetOpen && <AddressSheet onClose={() => setAddressSheetOpen(false)} />}
+      {profileOpen && <ProfileSidebar onClose={() => setProfileOpen(false)} />}
     </div>
   );
 }

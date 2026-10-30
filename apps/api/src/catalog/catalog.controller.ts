@@ -16,8 +16,25 @@ export class CatalogController {
   }
 
   @Get('products')
-  products(@Query('category') category: string | undefined, @Query('store') store: string) {
-    return this.catalog.products({ categorySlug: category, storeId: store });
+  products(
+    @Query('category') category: string | undefined,
+    @Query('store') store: string,
+    @Query('subcategory') subcategory: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Query('offset') offset: string | undefined,
+  ) {
+    return this.catalog.products({
+      categorySlug: category,
+      storeId: store,
+      subcategory,
+      limit: limit ? Number(limit) : undefined,
+      offset: offset ? Number(offset) : undefined,
+    });
+  }
+
+  @Get('products/counts')
+  productCounts(@Query('category') category: string) {
+    return this.catalog.productCounts({ categorySlug: category });
   }
 
   @Get('products/:id')

@@ -83,6 +83,10 @@ export class OrdersService {
       data: { status: 'ordered', version: { increment: 1 } },
     });
 
+    if (bill.couponCode) {
+      await this.prisma.coupon.updateMany({ where: { code: bill.couponCode }, data: { usedCount: { increment: 1 } } });
+    }
+
     for (const p of payments) {
       this.gateway.broadcastPaymentStatus(cartId, p.payerId, p.status);
     }

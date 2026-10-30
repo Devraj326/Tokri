@@ -2,8 +2,8 @@
 
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { getCart, getBill, getShares, lockCart } from '../../lib/api/cart';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { getCart, getBill, getShares, lockCart, applyCoupon, removeCoupon } from '../../lib/api/cart';
 import { createOrder, createRazorpayOrder, verifyPayment, listMyOrders, getOrder, type PaymentDto } from '../../lib/api/orders';
 import { ApiError } from '../../lib/api/client';
 import { listAddresses, createAddress, type AddressDto } from '../../lib/api/users';
@@ -71,6 +71,27 @@ function CheckoutPageInner() {
   const [upiOk, setUpiOk] = useState(false);
   const [upiMsg, setUpiMsg] = useState('');
   const [cvv, setCvv] = useState('');
+  const [couponInput, setCouponInput] = useState('');
+  const [couponError, setCouponError] = useState('');
+
+  const applyCouponMutation = useMutation({
+    mutationFn: (code: string) => applyCoupon(cartId!, code),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cart', cartId] });
+      qc.invalidateQueries({ queryKey: ['cart-bill', cartId] });
+      setCouponInput('');
+      setCouponError('');
+    },
+    onError: (err: any) => setCouponError(err?.message ?? 'Could not apply this coupon'),
+  });
+
+  const removeCouponMutation = useMutation({
+    mutationFn: () => removeCoupon(cartId!),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['cart', cartId] });
+      qc.invalidateQueries({ queryKey: ['cart-bill', cartId] });
+    },
+  });
   const [cvvError, setCvvError] = useState(false);
   const [orderError, setOrderError] = useState<string | null>(null);
 
@@ -405,6 +426,45 @@ function CheckoutPageInner() {
         </section>
       )}
 
+      {cart && (
+      <section className="card bill2" style={{ margin: '16px 16px 0' }}>
+        <h3>Coupon</h3>
+        {cart.couponCode ? (
+          <div className="l">
+            <span>
+              <b>{cart.couponCode}</b> applied
+            </span>
+            <button className="link small" disabled={removeCouponMutation.isPending} onClick={() => removeCouponMutation.mutate()}>
+              Remove
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                className="input"
+                placeholder="Enter coupon code"
+                value={couponInput}
+                onChange={(e) => {
+                  setCouponInput(e.target.value.toUpperCase());
+                  setCouponError('');
+                }}
+                style={{ flex: 1 }}
+              />
+              <button
+                className="btn"
+                disabled={!couponInput || applyCouponMutation.isPending}
+                onClick={() => applyCouponMutation.mutate(couponInput)}
+              >
+                Apply
+              </button>
+            </div>
+            {couponError && <p className="small" style={{ color: 'var(--mirchi)', marginTop: 6 }}>{couponError}</p>}
+          </>
+        )}
+      </section>
+      )}
+
       {bill && (
         <section className="card bill2" style={{ margin: '16px 16px 0' }}>
           <h3>Bill details</h3>
@@ -416,6 +476,12 @@ function CheckoutPageInner() {
             <span>Delivery fee</span>
             <span>{bill.deliveryFee === 0 ? <><s>₹25</s> <b className="saved">Free</b></> : `₹${bill.deliveryFee}`}</span>
           </div>
+          {bill.discount > 0 && (
+            <div className="l">
+              <span>Coupon discount{bill.couponCode ? ` (${bill.couponCode})` : ''}</span>
+              <span className="saved">−₹{bill.discount}</span>
+            </div>
+          )}
           {tip > 0 && (
             <div className="l">
               <span>Rider tip</span>

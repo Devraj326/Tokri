@@ -431,6 +431,15 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; letter-spacing:
 @keyframes up { from { transform: translateY(40%); } }
 .sheetback { position: fixed; inset: 0; background: rgba(20,19,15,.45); z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
 .sheet { background: var(--paper); border-top: 2px solid var(--ink); border-radius: 22px 22px 0 0; width: 100%; max-width: 480px; padding: 20px 18px 26px; animation: up .25s ease-out; }
+
+@keyframes slideInRight { from { transform: translateX(100%); } }
+.drawerback { position: fixed; inset: 0; background: rgba(20,19,15,.45); z-index: 50; display: flex; justify-content: flex-end; }
+.drawer { background: var(--paper); border-left: 2px solid var(--ink); width: min(86%, 340px); height: 100%; padding: 20px 18px; overflow-y: auto; animation: slideInRight .25s ease-out; display: flex; flex-direction: column; }
+.drawer-head { display: flex; align-items: center; gap: 12px; padding-bottom: 16px; border-bottom: 2px solid var(--ink); margin-bottom: 16px; }
+.drawer-head .av { width: 52px; height: 52px; font-size: 20px; }
+.drawer-row { display: flex; align-items: center; gap: 12px; padding: 14px 0; border-bottom: 1.5px dashed var(--dust); width: 100%; text-align: left; background: none; }
+.drawer-row:last-child { border-bottom: 0; }
+.drawer-row svg { width: 20px; height: 20px; flex: none; }
 .opt { display: grid; grid-template-columns: 24px 1fr auto; gap: 12px; align-items: center; padding: 12px 0; border-bottom: 1.5px dashed var(--dust); width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-top: 0; color: inherit; }
 .opt:last-child { border-bottom: 0; }
 .radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--ink); display: grid; place-items: center; }

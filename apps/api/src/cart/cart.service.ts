@@ -19,6 +19,46 @@ export class CartService {
     return new Date(Date.now() + 48 * 60 * 60 * 1000);
   }
 
+  private async resolveDiscount(couponCode: string | null, subtotal: number) {
+    if (!couponCode) return { discount: 0 };
+    const coupon = await this.prisma.coupon.findUnique({ where: { code: couponCode } });
+    if (!coupon || !coupon.isActive) return { discount: 0 };
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) return { discount: 0 };
+    if (coupon.usageLimit != null && coupon.usedCount >= coupon.usageLimit) return { discount: 0 };
+    if (coupon.minOrderValue != null && subtotal < coupon.minOrderValue) return { discount: 0 };
+    let discount = coupon.discountType === 'flat' ? coupon.value : (subtotal * coupon.value) / 100;
+    if (coupon.maxDiscount != null) discount = Math.min(discount, coupon.maxDiscount);
+    discount = Math.min(discount, subtotal);
+    return { discount: Math.round(discount * 100) / 100 };
+  }
+
+  async applyCoupon(cartId: string, userId: string, rawCode: string) {
+    await this.requireMember(cartId, userId);
+    const cart = await this.prisma.cart.findUniqueOrThrow({ where: { id: cartId }, include: { items: { include: { variant: true } } } });
+    if (cart.status !== 'open') throw new BadRequestException('Cart is not open');
+
+    const code = rawCode.trim().toUpperCase();
+    const coupon = await this.prisma.coupon.findUnique({ where: { code } });
+    if (!coupon || !coupon.isActive) throw new BadRequestException('Invalid coupon code');
+    if (coupon.expiresAt && coupon.expiresAt < new Date()) throw new BadRequestException('This coupon has expired');
+    if (coupon.usageLimit != null && coupon.usedCount >= coupon.usageLimit) {
+      throw new BadRequestException('This coupon has been fully redeemed');
+    }
+    const subtotal = cart.items.reduce((sum, i) => sum + i.variant.price * i.qty, 0);
+    if (coupon.minOrderValue != null && subtotal < coupon.minOrderValue) {
+      throw new BadRequestException(`Add items worth ₹${Math.ceil(coupon.minOrderValue - subtotal)} more to use this coupon`);
+    }
+
+    await this.prisma.cart.update({ where: { id: cartId }, data: { couponCode: coupon.code } });
+    return { version: await this.bumpVersion(cartId) };
+  }
+
+  async removeCoupon(cartId: string, userId: string) {
+    await this.requireMember(cartId, userId);
+    await this.prisma.cart.update({ where: { id: cartId }, data: { couponCode: null } });
+    return { version: await this.bumpVersion(cartId) };
+  }
+
   async createSoloCart(userId: string, storeId: string, addressId?: string) {
     const cart = await this.prisma.cart.create({
       data: {
@@ -172,7 +212,8 @@ export class CartService {
 
     const subtotal = cart.items.reduce((sum, i) => sum + i.variant.price * i.qty, 0);
     const deliveryFee = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE;
-    const total = subtotal + deliveryFee;
+    const { discount } = await this.resolveDiscount(cart.couponCode, subtotal);
+    const total = Math.max(0, subtotal + deliveryFee - discount);
     const memberCount = cart.members.length || 1;
 
     if (cart.splitMode === 'host_pays_all') {
@@ -184,9 +225,10 @@ export class CartService {
     }
     if (cart.splitMode === 'pay_for_own') {
       const feeShare = deliveryFee / memberCount;
+      const discountShare = discount / memberCount;
       return cart.members.map((m) => {
         const own = cart.items.filter((i) => i.addedBy === m.userId).reduce((s, i) => s + i.variant.price * i.qty, 0);
-        return { userId: m.userId, amount: Math.round((own + feeShare) * 100) / 100 };
+        return { userId: m.userId, amount: Math.max(0, Math.round((own + feeShare - discountShare) * 100) / 100) };
       });
     }
     // custom: default to equal split until host assigns explicit amounts via payments module
@@ -251,6 +293,7 @@ export class CartService {
       id: item.id,
       cartId: item.cartId,
       variantId: item.variantId,
+      productId: item.variant.productId,
       name: `${item.variant.product.name} (${item.variant.size})`,
       image: item.variant.product.images[0] ?? null,
       price: item.variant.price,
@@ -287,6 +330,7 @@ export class CartService {
       addressId: cart.addressId,
       status: cart.status,
       orderId: cart.orders[0]?.id ?? null,
+      couponCode: cart.couponCode,
       budgetCap: cart.budgetCap,
       splitMode: cart.splitMode,
       inviteCode: cart.inviteCode,
@@ -303,6 +347,7 @@ export class CartService {
         id: item.id,
         cartId: item.cartId,
         variantId: item.variantId,
+        productId: item.variant.productId,
         name: `${item.variant.product.name} (${item.variant.size})`,
         image: item.variant.product.images[0] ?? null,
         price: item.variant.price,
@@ -325,6 +370,16 @@ export class CartService {
     const subtotal = cart.items.reduce((sum, i) => sum + i.variant.price * i.qty, 0);
     const deliveryFee = subtotal >= FREE_DELIVERY_THRESHOLD ? 0 : DELIVERY_FEE;
     const amountToFreeDelivery = Math.max(0, FREE_DELIVERY_THRESHOLD - subtotal);
-    return { subtotal, deliveryFee, total: subtotal + deliveryFee, freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD, amountToFreeDelivery };
+    const { discount } = await this.resolveDiscount(cart.couponCode, subtotal);
+    const total = Math.max(0, subtotal + deliveryFee - discount);
+    return {
+      subtotal,
+      deliveryFee,
+      discount,
+      couponCode: discount > 0 ? cart.couponCode : null,
+      total,
+      freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD,
+      amountToFreeDelivery,
+    };
   }
 }

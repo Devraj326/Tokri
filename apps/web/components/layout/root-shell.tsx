@@ -10,7 +10,8 @@ export function RootShell({ children }: { children: ReactNode }) {
   const user = useAuthStore((s) => s.user);
 
   const isLoggedOutLanding = pathname === '/' && !user;
-  if (isLoggedOutLanding) return <>{children}</>;
+  const isAdmin = pathname?.startsWith('/admin');
+  if (isLoggedOutLanding || isAdmin) return <>{children}</>;
 
   return <MobileAppShell>{children}</MobileAppShell>;
 }

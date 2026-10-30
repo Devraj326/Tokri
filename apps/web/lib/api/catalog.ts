@@ -44,10 +44,32 @@ export interface ProductDto {
   variants: VariantDto[];
 }
 
-export function listProducts(storeId: string, categorySlug?: string) {
+export interface ProductListResult {
+  items: ProductDto[];
+  total: number;
+}
+
+export function listProducts(
+  storeId: string,
+  categorySlug?: string,
+  opts?: { subcategory?: string; limit?: number; offset?: number },
+) {
   const q = new URLSearchParams({ store: storeId });
   if (categorySlug) q.set('category', categorySlug);
-  return apiFetch<ProductDto[]>(`/products?${q.toString()}`, { auth: false });
+  if (opts?.subcategory) q.set('subcategory', opts.subcategory);
+  if (opts?.limit != null) q.set('limit', String(opts.limit));
+  if (opts?.offset != null) q.set('offset', String(opts.offset));
+  return apiFetch<ProductListResult>(`/products?${q.toString()}`, { auth: false });
+}
+
+export interface ProductCounts {
+  total: number;
+  subcategories: Record<string, number>;
+}
+
+export function listProductCounts(storeId: string, categorySlug: string) {
+  const q = new URLSearchParams({ store: storeId, category: categorySlug });
+  return apiFetch<ProductCounts>(`/products/counts?${q.toString()}`, { auth: false });
 }
 
 export function getProduct(id: string, storeId: string) {

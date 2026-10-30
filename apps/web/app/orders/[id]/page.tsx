@@ -2,9 +2,10 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { getOrder, reorder, type OrderDetailDto } from '../../../lib/api/orders';
 import { getCart } from '../../../lib/api/cart';
+import { submitReview } from '../../../lib/api/reviews';
 import { getSocket } from '../../../lib/socket';
 import { useSessionStore } from '../../../lib/store/session';
 import { AppBar } from '../../../components/layout/app-bar';
@@ -33,6 +34,10 @@ export default function OrderTrackingPage() {
   const [eta, setEta] = useState<string | null>(null);
   const [rating, setRating] = useState(0);
   const [itemRating, setItemRating] = useState<Record<string, 1 | 0 | undefined>>({});
+  const reviewMutation = useMutation({
+    mutationFn: (args: { productId: string; rating: number; orderId: string }) =>
+      submitReview(args.productId, { rating: args.rating, orderId: args.orderId }),
+  });
   const [reordering, setReordering] = useState(false);
   const pathRef = useRef<SVGPathElement>(null);
   const riderRef = useRef<SVGGElement>(null);
@@ -134,10 +139,26 @@ export default function OrderTrackingPage() {
                 </div>
                 <span className="small"><b>{item.name}</b></span>
                 <span className="thumbs">
-                  <button aria-label="Good" aria-pressed={itemRating[item.id] === 1} onClick={() => setItemRating((r) => ({ ...r, [item.id]: r[item.id] === 1 ? undefined : 1 }))}>
+                  <button
+                    aria-label="Good"
+                    aria-pressed={itemRating[item.id] === 1}
+                    onClick={() => {
+                      const next = itemRating[item.id] === 1 ? undefined : 1;
+                      setItemRating((r) => ({ ...r, [item.id]: next }));
+                      if (next === 1 && order) reviewMutation.mutate({ productId: item.productId, rating: 5, orderId: order.id });
+                    }}
+                  >
                     <Icon name="up" className="h-4 w-4" />
                   </button>
-                  <button aria-label="Not good" aria-pressed={itemRating[item.id] === 0} onClick={() => setItemRating((r) => ({ ...r, [item.id]: r[item.id] === 0 ? undefined : 0 }))}>
+                  <button
+                    aria-label="Not good"
+                    aria-pressed={itemRating[item.id] === 0}
+                    onClick={() => {
+                      const next = itemRating[item.id] === 0 ? undefined : 0;
+                      setItemRating((r) => ({ ...r, [item.id]: next }));
+                      if (next === 0 && order) reviewMutation.mutate({ productId: item.productId, rating: 2, orderId: order.id });
+                    }}
+                  >
                     <Icon name="down" className="h-4 w-4" />
                   </button>
                 </span>

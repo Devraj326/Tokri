@@ -10,6 +10,9 @@ import { CartModule } from './cart/cart.module.js';
 import { KitAiModule } from './kit-ai/kit-ai.module.js';
 import { OrdersModule } from './orders/orders.module.js';
 import { UsersModule } from './users/users.module.js';
+import { AdminModule } from './admin/admin.module.js';
+import { ReviewsModule } from './reviews/reviews.module.js';
+import { CouponsModule } from './coupons/coupons.module.js';
 
 @Module({
   imports: [
@@ -22,6 +25,9 @@ import { UsersModule } from './users/users.module.js';
     KitAiModule,
     OrdersModule,
     UsersModule,
+    AdminModule,
+    ReviewsModule,
+    CouponsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

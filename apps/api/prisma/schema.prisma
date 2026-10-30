@@ -77,6 +77,11 @@ enum PantryKind {
   tool
 }
 
+enum CouponType {
+  flat
+  percent
+}
+
 // ---------- Core models ----------
 
 model User {
@@ -96,6 +101,7 @@ model User {
   pantryItems    PantryItem[]
   orders         Order[]
   payments       Payment[]
+  reviews        Review[]
 
   @@map("users")
 }
@@ -175,9 +181,45 @@ model Product {
 
   category Category  @relation(fields: [categoryId], references: [id])
   variants Variant[]
+  reviews  Review[]
 
   @@index([name])
   @@map("products")
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  productId String   @map("product_id")
+  userId    String   @map("user_id")
+  orderId   String?  @map("order_id")
+  rating    Int
+  text      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  @@unique([productId, userId, orderId])
+  @@index([productId])
+  @@map("reviews")
+}
+
+model Coupon {
+  id            String     @id @default(uuid())
+  code          String     @unique
+  description   String?
+  discountType  CouponType @map("discount_type")
+  value         Float
+  minOrderValue Float?     @map("min_order_value")
+  maxDiscount   Float?     @map("max_discount")
+  isActive      Boolean    @default(true) @map("is_active")
+  expiresAt     DateTime?  @map("expires_at")
+  usageLimit    Int?       @map("usage_limit")
+  usedCount     Int        @default(0) @map("used_count")
+  createdAt     DateTime   @default(now()) @map("created_at")
+
+  @@map("coupons")
 }
 
 model Variant {
@@ -227,6 +269,7 @@ model Cart {
   storeId    String     @map("store_id")
   addressId  String?    @map("address_id")
   status     CartStatus @default(open)
+  couponCode String?    @map("coupon_code")
   budgetCap  Float?     @map("budget_cap")
   splitMode  SplitMode  @default(host_pays_all) @map("split_mode")
   inviteCode String?    @unique @map("invite_code")
@@ -363,6 +406,7 @@ model Order {
   user  User  @relation(fields: [userId], references: [id])
 
   payments Payment[]
+  reviews  Review[]
 
   @@map("orders")
 }
